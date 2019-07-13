@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,22 +33,35 @@ func main() {
 	}
 	db = badgerDb
 	var dbOpen = true
+	var dbOpenLock = new(sync.Mutex)
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
+			lsmSize1, vlogSize1 := badgerDb.Size()
+			dbOpenLock.Lock()
+			if !dbOpen {
+				dbOpenLock.Unlock()
+				return
+			}
 		again:
 			err := db.RunValueLogGC(0.7)
 			if err == nil {
 				goto again
 			}
+			lsmSize2, vlogSize2 := badgerDb.Size()
+			fmt.Printf("DB_GC: badger before GC, LSM %d, vlog %d. after GC, LSM %d, vlog %d\n", lsmSize1, vlogSize1, lsmSize2, vlogSize2)
+			dbOpenLock.Unlock()
 		}
 	}()
 	defer func() {
+		dbOpenLock.Lock()
+		dbOpen = false
 		err = db.Close()
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, "closing error:", err)
 		}
+		dbOpenLock.Unlock()
 	}()
 
 	//TODO

@@ -28,7 +28,7 @@ func startHttp(laddr string) {
 func httpRegisterAccount(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("incoming request...")
 
-	mail := "meidomx2@outlook.com"
+	mail := "example@example.com"
 
 	acc, err := client.Register([]string{mail})
 	if err != nil {
