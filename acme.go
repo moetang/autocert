@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
+	"fmt"
 	"log"
 
 	"github.com/eggsampler/acme"
@@ -18,6 +19,20 @@ type Account struct {
 
 	AccountName string
 	MailList    []string
+
+	acmeAccount *acme.Account
+}
+
+type Domain struct {
+	Domain        string
+	AccountMail   string
+	ChallengeType string
+	Status        string
+
+	CreateTime string
+	IssueTime  string
+
+	ChallengeData string
 }
 
 type AcmeClient struct {
@@ -38,6 +53,38 @@ func newAcmeClient(production bool) *AcmeClient {
 	return &AcmeClient{
 		client: client,
 	}
+}
+
+func (this *AcmeClient) LoadAccount(acc *Account) (*Account, error) {
+	privData, err := base64.StdEncoding.DecodeString(acc.PrivateKeyString)
+	if err != nil {
+		return nil, err
+	}
+	privKey, err := x509.ParseECPrivateKey(privData)
+	if err != nil {
+		return nil, err
+	}
+
+	acmeAccount := acme.Account{
+		PrivateKey: privKey,
+		URL:        acc.AccountUrl,
+	}
+	contacts := make([]string, len(acc.MailList))
+	for i, v := range acc.MailList {
+		contacts[i] = "mailto:" + v
+	}
+	newAcmeAccount, err := this.client.UpdateAccount(acmeAccount, true, contacts...)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("old url:", acc.AccountUrl)
+	fmt.Println("new url:", newAcmeAccount.URL)
+
+	acc.acmeAccount = &newAcmeAccount
+	acc.AccountUrl = newAcmeAccount.URL
+
+	return acc, nil
 }
 
 func (this *AcmeClient) Register(mailList []string) (*Account, error) {
