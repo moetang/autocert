@@ -16,7 +16,8 @@ type Account struct {
 
 	AccountUrl string
 
-	MailList []string
+	AccountName string
+	MailList    []string
 }
 
 type AcmeClient struct {

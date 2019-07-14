@@ -35,7 +35,7 @@ func main() {
 	var dbOpen = true
 	var dbOpenLock = new(sync.Mutex)
 	go func() {
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(61 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
 			lsmSize1, vlogSize1 := badgerDb.Size()
@@ -55,6 +55,7 @@ func main() {
 		}
 	}()
 	defer func() {
+		fmt.Println("closing database...")
 		dbOpenLock.Lock()
 		dbOpen = false
 		err = db.Close()
@@ -64,8 +65,10 @@ func main() {
 		dbOpenLock.Unlock()
 	}()
 
-	//TODO
-	startHttp(":8085")
+	//TODO need configure listening address
+	go startHttp(":8085")
+
+	fmt.Println("server started.")
 
 	// waiting for exit signal
 	waitSignal()
