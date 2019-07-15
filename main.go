@@ -67,6 +67,7 @@ func main() {
 
 	//TODO need configure listening address
 	go startHttp(":8085")
+	go StartJob()
 
 	fmt.Println("server started.")
 
