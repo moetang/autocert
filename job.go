@@ -3,34 +3,26 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"path/filepath"
 	"time"
 
 	"github.com/dgraph-io/badger"
 )
 
 func StartJob() {
-	now := time.Now()
-	newT := time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location())
-	next := newT.AddDate(0, 0, 1)
-	//next := now.Add(10 * time.Second)
 
-	logline("start scheduling... next:", next)
+	logline("start scheduling job...")
 
-	firstTimer := time.NewTimer(next.Sub(now))
-	<-firstTimer.C
-	firstTimer.Stop()
-
-	duration := 4 * time.Hour
+	duration := 30 * time.Minute
 	// 4 hour per schedule
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
 
-	scheduleTime := time.Now()
 	for {
+		scheduleTime := <-ticker.C
 		logline("start processing jobs...", scheduleTime)
 		startJobProcessing()
 		logline("next schedule:", scheduleTime.Add(duration))
-		scheduleTime = <-ticker.C
 	}
 }
 
@@ -62,10 +54,10 @@ func startJobProcessing() {
 					return err
 				}
 				if domain.Status != IssueAvailable {
-					domainList[idx] = struct {
+					domainList = append(domainList, struct {
 						Domain *Domain
 						Key    []byte
-					}{Domain: domain, Key: item.Key()}
+					}{Domain: domain, Key: item.Key()})
 					idx++
 				}
 				return nil
@@ -85,14 +77,111 @@ func startJobProcessing() {
 	for _, v := range domainList {
 		switch v.Domain.Status {
 		case IssuePending:
+			logline("[job] start processing pending domain:", v.Domain.Domain)
 			err := jobProcessPending(v.Domain.AccountMail, v.Domain)
 			if err != nil {
-				logline("process domain:", v.Domain.Domain, "error.", err)
+				logline("process pending domain:", v.Domain.Domain, "error.", err)
 			}
+		case IssueChallenging:
+			logline("[job] start processing challenging domain:", v.Domain.Domain)
+			err := jobProcessChallenging(v.Domain.AccountMail, v.Domain)
+			if err != nil {
+				logline("process challenging domain:", v.Domain.Domain, "error.", err)
+			}
+		case IssueAvailable:
+			//TODO check issue time. if already 4 months, try to reissue
+			logline("[job] start processing available domain:", v.Domain.Domain)
 		default:
 			logline("unknown domain status:", v.Domain.Status)
 		}
 	}
+}
+
+func jobProcessChallenging(mail string, domain *Domain) error {
+	var accountData []byte
+	err := db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(AccountTable(mail))
+		if err != nil {
+			return err
+		}
+		err = item.Value(func(val []byte) error {
+			accountData = val
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		logline("query error:", err)
+		return err
+	}
+
+	accData, err := base64.StdEncoding.DecodeString(string(accountData))
+	if err != nil {
+		logline("base64 decode error:", err)
+		return err
+	}
+	acc := new(Account)
+	err = json.Unmarshal(accData, acc)
+	if err != nil {
+		logline("json unmarshal error:", err)
+		return err
+	}
+
+	//acc, err = client.LoadAccount(acc)
+	//if err != nil {
+	//	logline("load account error:", err)
+	//	return err
+	//}
+
+	priv, cert, err := client.UpdateChallenge(acc, domain)
+	if err != nil {
+		logline("update challeging error when do acme operations:", err)
+		// rollback status to pending in order to redo challenge work
+		// If we can recognize whether we should redo challenge, this code could be changed
+		domain.Status = IssuePending
+		// update db
+		domainData, _ := json.Marshal(domain)
+		err2 := db.Update(func(txn *badger.Txn) error {
+			return txn.Set(DomainTable(domain.Domain), domainData)
+		})
+		if err2 != nil {
+			logline("update domain to pending error for domain rollback:", domain.Domain)
+			return err2
+		}
+		return err
+	}
+
+	//TODO need remove
+	logline("private file:" + string(priv))
+	logline("cert file:" + string(cert))
+
+	// write files
+	err = WritePemPrivateKeyFile(filepath.Join("certs", domain.Domain+"_"+time.Now().Format(time.RFC3339Nano))+".key", priv)
+	if err != nil {
+		logline("write private key error.", err)
+		return err
+	}
+	err = WritePemCertFile(filepath.Join("certs", domain.Domain+"_"+time.Now().Format(time.RFC3339Nano))+".cert", priv)
+	if err != nil {
+		logline("write cert error.", err)
+		return err
+	}
+
+	domain.Status = IssueAvailable
+	domain.IssueTime = time.Now().Format(time.RFC3339Nano)
+	// update db
+	domainData, _ := json.Marshal(domain)
+	err = db.Update(func(txn *badger.Txn) error {
+		return txn.Set(DomainTable(domain.Domain), domainData)
+	})
+	if err != nil {
+		logline("update domain to available error for domain:", domain.Domain)
+		return err
+	}
+	return nil
 }
 
 func jobProcessPending(mail string, domain *Domain) error {
@@ -134,7 +223,28 @@ func jobProcessPending(mail string, domain *Domain) error {
 		return err
 	}
 
-	//TODO do acme
+	orderdata, chaldata, token, err := client.AcquireChallenging(acc, domain)
+	if err != nil {
+		logline("acquire challenging error:", err)
+		return err
+	}
+	domain.ChallengeData = string(chaldata)
+	domain.OrderData = string(orderdata)
+	//TODO update token to dns provider
+	logline("acquired token:", token)
+
+	// update status to challenging
+	domain.Status = IssueChallenging
+
+	// update db
+	domainData, _ := json.Marshal(domain)
+	err = db.Update(func(txn *badger.Txn) error {
+		return txn.Set(DomainTable(domain.Domain), domainData)
+	})
+	if err != nil {
+		logline("update domain to challenging error for domain:", domain.Domain)
+		return err
+	}
 
 	return nil
 }

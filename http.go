@@ -14,8 +14,17 @@ import (
 var AccountTablePrefix = "account_"
 var DomainTablePrefix = "domain_"
 
+/*
+ * //TODO
+ * state machine:
+ * pending -> challenging
+ * challenging -> pending (when token expire/error)
+ * challenging -> available (when cert generated)
+ * available -> pending (when cert nearly/already expired)
+ */
 var (
-	IssuePending = "pending"
+	IssuePending     = "pending"
+	IssueChallenging = "challenging"
 
 	IssueAvailable = "available"
 )
@@ -37,6 +46,10 @@ func startHttp(laddr string) {
 	mux.HandleFunc("/new_issue", httpNewIssue)
 	mux.HandleFunc("/list_issue", httpListAllIssue)
 
+	// internal
+	mux.HandleFunc("/trigger_job", httpTriggerJob)
+	mux.HandleFunc("/delete_issue", httpDeleteIssue)
+
 	err := http.ListenAndServe(laddr, mux)
 	if err != nil {
 		panic(err)
@@ -50,6 +63,31 @@ func param(key string, q url.Values) *string {
 	}
 	v := vs[0]
 	return &v
+}
+
+func httpTriggerJob(w http.ResponseWriter, r *http.Request) {
+	startJobProcessing()
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok."))
+	return
+}
+
+func httpDeleteIssue(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	domainPtr := param("domain", q)
+	err := db.Update(func(txn *badger.Txn) error {
+		return txn.Delete(DomainTable(*domainPtr))
+	})
+	if err != nil {
+		logline("delete domain error:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("error occurs."))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("submit."))
 }
 
 func httpListAllIssue(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +191,7 @@ func httpNewIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// create issue domain task
-	nowTime := time.Now().Format(time.RFC3339)
+	nowTime := time.Now().Format(time.RFC3339Nano)
 	domain := &Domain{
 		Domain:        *domainPtr,
 		AccountMail:   *mailPtr,
