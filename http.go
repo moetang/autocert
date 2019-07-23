@@ -91,36 +91,13 @@ func httpDeleteIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 func httpListAllIssue(w http.ResponseWriter, r *http.Request) {
-	var queryData [][]byte
-	err := db.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer it.Close()
-		prefix := []byte(DomainTablePrefix)
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			err := item.Value(func(v []byte) error {
-				queryData = append(queryData, v)
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	result, err := QueryAllDomain()
 
 	if err != nil {
 		logline("query error:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("error occurs."))
 		return
-	}
-
-	result := make([]*Domain, len(queryData))
-	for i, v := range queryData {
-		domain := new(Domain)
-		_ = json.Unmarshal(v, domain)
-		result[i] = domain
 	}
 
 	data, _ := json.Marshal(result)

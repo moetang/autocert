@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"path/filepath"
 	"time"
@@ -98,35 +97,9 @@ func startJobProcessing() {
 }
 
 func jobProcessChallenging(mail string, domain *Domain) error {
-	var accountData []byte
-	err := db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(AccountTable(mail))
-		if err != nil {
-			return err
-		}
-		err = item.Value(func(val []byte) error {
-			accountData = val
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-		return nil
-	})
+	acc, err := QueryAccountByMail(mail)
 	if err != nil {
-		logline("query error:", err)
-		return err
-	}
-
-	accData, err := base64.StdEncoding.DecodeString(string(accountData))
-	if err != nil {
-		logline("base64 decode error:", err)
-		return err
-	}
-	acc := new(Account)
-	err = json.Unmarshal(accData, acc)
-	if err != nil {
-		logline("json unmarshal error:", err)
+		logline("invoke QueryAccountByMail error:", err)
 		return err
 	}
 
@@ -185,35 +158,9 @@ func jobProcessChallenging(mail string, domain *Domain) error {
 }
 
 func jobProcessPending(mail string, domain *Domain) error {
-	var accountData []byte
-	err := db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(AccountTable(mail))
-		if err != nil {
-			return err
-		}
-		err = item.Value(func(val []byte) error {
-			accountData = val
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-		return nil
-	})
+	acc, err := QueryAccountByMail(mail)
 	if err != nil {
-		logline("query error:", err)
-		return err
-	}
-
-	accData, err := base64.StdEncoding.DecodeString(string(accountData))
-	if err != nil {
-		logline("base64 decode error:", err)
-		return err
-	}
-	acc := new(Account)
-	err = json.Unmarshal(accData, acc)
-	if err != nil {
-		logline("json unmarshal error:", err)
+		logline("invoke QueryAccountByMail error:", err)
 		return err
 	}
 
