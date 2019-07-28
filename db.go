@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 
 	"github.com/dgraph-io/badger"
 )
@@ -76,4 +77,24 @@ func QueryAccountByMail(mail string) (*Account, error) {
 		return nil, err
 	}
 	return acc, nil
+}
+
+func UpdateDomain(domain string, domainObj *Domain) error {
+	domainData, _ := json.Marshal(domainObj)
+	err := db.Update(func(txn *badger.Txn) error {
+		// check not exist
+		item, err := txn.Get(DomainTable(domain))
+		if err != nil && err != badger.ErrKeyNotFound {
+			return err
+		}
+		if item != nil {
+			return errors.New("domain exists")
+		}
+		return txn.Set(DomainTable(domain), domainData)
+	})
+	if err != nil {
+		logline("save domain to db error:", err)
+		return err
+	}
+	return nil
 }

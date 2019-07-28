@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/url"
 	"time"
@@ -177,18 +176,8 @@ func httpNewIssue(w http.ResponseWriter, r *http.Request) {
 
 		CreateTime: nowTime,
 	}
-	domainData, _ := json.Marshal(domain)
-	err = db.Update(func(txn *badger.Txn) error {
-		// check not exist
-		item, err := txn.Get(DomainTable(*domainPtr))
-		if err != nil && err != badger.ErrKeyNotFound {
-			return err
-		}
-		if item != nil {
-			return errors.New("domain exists")
-		}
-		return txn.Set(DomainTable(*domainPtr), domainData)
-	})
+
+	err = UpdateDomain(*domainPtr, domain)
 	if err != nil {
 		logline("save domain issue job error:", err)
 		w.WriteHeader(http.StatusInternalServerError)
