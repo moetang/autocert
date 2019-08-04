@@ -98,3 +98,11 @@ func UpdateDomain(domain string, domainObj *Domain) error {
 	}
 	return nil
 }
+
+func UpdateDomainDirect(domain string, domainObj *Domain) error {
+	domainData, _ := json.Marshal(domainObj)
+	err := db.Update(func(txn *badger.Txn) error {
+		return txn.Set(DomainTable(domain), domainData)
+	})
+	return err
+}

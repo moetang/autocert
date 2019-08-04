@@ -146,10 +146,7 @@ func jobProcessChallenging(mail string, domain *Domain) error {
 	domain.Status = IssueAvailable
 	domain.IssueTime = time.Now().Format(time.RFC3339Nano)
 	// update db
-	domainData, _ := json.Marshal(domain)
-	err = db.Update(func(txn *badger.Txn) error {
-		return txn.Set(DomainTable(domain.Domain), domainData)
-	})
+	err = UpdateDomainDirect(domain.Domain, domain)
 	if err != nil {
 		logline("update domain to available error for domain:", domain.Domain)
 		return err
@@ -184,10 +181,7 @@ func jobProcessPending(mail string, domain *Domain) error {
 	domain.Status = IssueChallenging
 
 	// update db
-	domainData, _ := json.Marshal(domain)
-	err = db.Update(func(txn *badger.Txn) error {
-		return txn.Set(DomainTable(domain.Domain), domainData)
-	})
+	err = UpdateDomainDirect(domain.Domain, domain)
 	if err != nil {
 		logline("update domain to challenging error for domain:", domain.Domain)
 		return err
