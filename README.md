@@ -15,6 +15,7 @@ auto manage certificates
 [ ] postgresql backend storage
 [ ] batch issue
 [ ] issue complete hook
+[ ] rpc interface
 
 # A1. Dependencies
 
